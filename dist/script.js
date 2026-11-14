@@ -203,15 +203,65 @@ if(slidesContainer){
 }
 restart();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearInterval(timer);else restart()});
+const RSVP_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwgWkFn1d4ahdVK54y8H4w8iYNMZ5CcF5Ag37dkNtWuna3quJBFDHkjBpQGdIho4OaCbg/exec';
+
 const form=document.querySelector('#rsvp-form'),guestCount=document.querySelector('#guests');
 const rsvpDialog=document.querySelector('#rsvp-dialog');
+const submitBtn=document.querySelector('#rsvp-submit-btn')||form.querySelector('button[type="submit"]');
 document.querySelector('#open-rsvp').onclick=()=>{rsvpDialog.showModal();document.body.classList.add('dialog-open');};
 document.querySelector('#close-rsvp').onclick=()=>rsvpDialog.close();
 rsvpDialog.addEventListener('close',()=>document.body.classList.remove('dialog-open'));
 rsvpDialog.addEventListener('click',event=>{const rect=rsvpDialog.getBoundingClientRect();if(event.target===rsvpDialog&&(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom))rsvpDialog.close();});
 form.addEventListener('change',()=>{guestCount.disabled=form.elements.attendance.value==='Regretfully declines';document.querySelector('#rsvp-result').hidden=true});
 form.addEventListener('input',()=>document.querySelector('#rsvp-result').hidden=true);
-let reply='';form.addEventListener('submit',e=>{e.preventDefault();const data=new FormData(form),name=data.get('name').trim();if(!name){document.querySelector('#guest-name').setCustomValidity('Please enter your name.');document.querySelector('#guest-name').reportValidity();return}const accepts=data.get('attendance')==='Joyfully accepts';reply=`Wedding RSVP — Angel & Vijay\nJanuary 4\n\nName: ${name}\n${data.get('attendance')}${accepts?`\nGuests (including me): ${data.get('guests')}`:''}${data.get('message').trim()?`\n\n${data.get('message').trim()}`:''}`;document.querySelector('#reply-text').textContent=reply;document.querySelector('#rsvp-result').hidden=false;document.querySelector('#reply-status').textContent='';});
+
+let reply='';
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const data = new FormData(form);
+  const name = data.get('name').trim();
+  if(!name){
+    document.querySelector('#guest-name').setCustomValidity('Please enter your name.');
+    document.querySelector('#guest-name').reportValidity();
+    return;
+  }
+  const attendance = data.get('attendance');
+  const accepts = attendance === 'Joyfully accepts';
+  const guests = accepts ? (data.get('guests') || '1') : '0';
+  const message = (data.get('message') || '').trim();
+
+  reply = `Wedding RSVP — Angel & Vijay\nJanuary 4\n\nName: ${name}\n${attendance}${accepts ? `\nGuests (including me): ${guests}` : ''}${message ? `\n\n${message}` : ''}`;
+  document.querySelector('#reply-text').textContent = reply;
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Recording RSVP…';
+  }
+
+  const payload = { name, attendance, guests, message };
+
+  try {
+    await fetch(RSVP_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    const statusHeading = document.querySelector('#rsvp-status-heading');
+    if (statusHeading) statusHeading.textContent = 'Thank you! Your RSVP has been recorded in our sheet.';
+    if (submitBtn) submitBtn.textContent = 'RSVP Sent ✓';
+  } catch (err) {
+    const statusHeading = document.querySelector('#rsvp-status-heading');
+    if (statusHeading) statusHeading.textContent = 'Please share your RSVP with the family below:';
+    if (submitBtn) {
+      submitBtn.textContent = 'Submit RSVP';
+      submitBtn.disabled = false;
+    }
+  }
+
+  document.querySelector('#rsvp-result').hidden = false;
+  document.querySelector('#reply-status').textContent = '';
+});
 document.querySelector('#guest-name').addEventListener('input',e=>e.target.setCustomValidity(''));
 document.querySelector('#copy-reply').onclick=async()=>{try{await navigator.clipboard.writeText(reply);document.querySelector('#reply-status').textContent='Reply copied. Paste it into a message to the family.'}catch{document.querySelector('#reply-status').textContent='Select and copy the reply above to send it to the family.'}};
 document.querySelector('#share-reply').onclick=async()=>{if(navigator.share){try{await navigator.share({title:'Wedding RSVP — Angel & Vijay',text:reply});}catch(e){if(e.name!=='AbortError')document.querySelector('#reply-status').textContent='Please copy your reply and send it to the family.'}}else{window.open('https://wa.me/?text='+encodeURIComponent(reply),'_blank','noopener,noreferrer');}};
